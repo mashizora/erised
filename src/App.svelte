@@ -1,75 +1,79 @@
 <script lang="ts">
-  import { onMount } from 'svelte'
-  import { parseCards, shuffle } from './lib/deck'
+  import { onMount } from "svelte";
+  import { parseCards, shuffle } from "./lib/deck";
 
   /** 翻开卡牌的时长：曲线带回弹，稍长一些让弹性完整呈现 */
-  const FLIP_OPEN_MS = 650
+  const FLIP_OPEN_MS = 650;
   /** 合上卡牌的时长：干脆利落，为下一张让路 */
-  const FLIP_CLOSE_MS = 300
+  const FLIP_CLOSE_MS = 300;
 
   /** 全部卡牌（加载后不再变化） */
-  let allCards: string[] = $state([])
+  let allCards: string[] = $state([]);
   /** 尚未抽到的卡牌，洗牌后从队首依次抽取 */
-  let deck: string[] = $state([])
+  let deck: string[] = $state([]);
   /** 当前展示的卡牌文字；尚未抽过时为 null */
-  let currentCard: string | null = $state(null)
+  let currentCard: string | null = $state(null);
   /** 卡牌是否处于翻开（正面朝上）状态 */
-  let isFlipped = $state(false)
+  let isFlipped = $state(false);
   /** 动画进行中，屏蔽连点 */
-  let isAnimating = $state(false)
-  let loadError = $state('')
+  let isAnimating = $state(false);
+  let loadError = $state("");
 
-  const hasDrawn = $derived(deck.length < allCards.length)
-  const isDeckEmpty = $derived(allCards.length > 0 && deck.length === 0)
+  const hasDrawn = $derived(deck.length < allCards.length);
+  const isDeckEmpty = $derived(allCards.length > 0 && deck.length === 0);
 
-  const delay = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms))
+  const delay = (ms: number) =>
+    new Promise<void>((resolve) => setTimeout(resolve, ms));
 
   onMount(async () => {
     try {
-      const response = await fetch(`${import.meta.env.BASE_URL}cards.txt`)
-      if (!response.ok) throw new Error(`HTTP ${response.status}`)
-      allCards = parseCards(await response.text())
-      deck = shuffle(allCards)
+      const response = await fetch(`${import.meta.env.BASE_URL}cards.txt`);
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      allCards = parseCards(await response.text());
+      deck = shuffle(allCards);
     } catch (error) {
-      loadError = `卡牌数据加载失败：${error instanceof Error ? error.message : String(error)}`
+      loadError = `卡牌数据加载失败：${error instanceof Error ? error.message : String(error)}`;
     }
-  })
+  });
 
   /** 若卡牌正翻开着，先合上再继续 */
   async function closeCardIfOpen(): Promise<void> {
-    if (!isFlipped) return
-    isFlipped = false
-    await delay(FLIP_CLOSE_MS)
+    if (!isFlipped) return;
+    isFlipped = false;
+    await delay(FLIP_CLOSE_MS);
   }
 
   /** 抽出下一张卡并翻开展示 */
   async function draw(): Promise<void> {
-    if (isAnimating || deck.length === 0) return
-    isAnimating = true
+    if (isAnimating || deck.length === 0) return;
+    isAnimating = true;
 
-    await closeCardIfOpen()
-    currentCard = deck[0]
-    deck = deck.slice(1)
-    isFlipped = true
-    await delay(FLIP_OPEN_MS)
+    await closeCardIfOpen();
+    currentCard = deck[0];
+    deck = deck.slice(1);
+    isFlipped = true;
+    await delay(FLIP_OPEN_MS);
 
-    isAnimating = false
+    isAnimating = false;
   }
 
   /** 收回所有卡牌，重新洗牌开始新一轮 */
   async function reset(): Promise<void> {
-    if (isAnimating) return
-    isAnimating = true
+    if (isAnimating) return;
+    isAnimating = true;
 
-    await closeCardIfOpen()
-    currentCard = null
-    deck = shuffle(allCards)
+    await closeCardIfOpen();
+    currentCard = null;
+    deck = shuffle(allCards);
 
-    isAnimating = false
+    isAnimating = false;
   }
 </script>
 
-<main style:--flip-open="{FLIP_OPEN_MS}ms" style:--flip-close="{FLIP_CLOSE_MS}ms">
+<main
+  style:--flip-open="{FLIP_OPEN_MS}ms"
+  style:--flip-close="{FLIP_CLOSE_MS}ms"
+>
   <header>
     <h1>抽牌</h1>
     <p class="count">
@@ -200,8 +204,11 @@
   }
 
   .back {
-    background:
-      radial-gradient(circle at 30% 20%, rgba(255, 255, 255, 0.12), transparent 50%),
+    background: radial-gradient(
+        circle at 30% 20%,
+        rgba(255, 255, 255, 0.12),
+        transparent 50%
+      ),
       linear-gradient(145deg, #4c3a8f, #2b2160);
     border: 2px solid rgba(255, 255, 255, 0.18);
   }
@@ -240,7 +247,9 @@
     border: none;
     border-radius: 999px;
     cursor: pointer;
-    transition: transform 0.15s ease, opacity 0.15s ease;
+    transition:
+      transform 0.15s ease,
+      opacity 0.15s ease;
     touch-action: manipulation;
     -webkit-tap-highlight-color: transparent;
   }
