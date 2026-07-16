@@ -19,7 +19,6 @@
   let isAnimating = $state(false);
   let loadError = $state("");
 
-  const hasDrawn = $derived(deck.length < allCards.length);
   const isDeckEmpty = $derived(allCards.length > 0 && deck.length === 0);
 
   const delay = (ms: number) =>
@@ -110,11 +109,6 @@
         <button class="primary" onclick={draw} disabled={isAnimating}>
           抽一张
         </button>
-        {#if hasDrawn}
-          <button class="ghost" onclick={reset} disabled={isAnimating}>
-            重置
-          </button>
-        {/if}
       {/if}
     </div>
   {/if}
@@ -270,13 +264,5 @@
     color: #fff;
     background: linear-gradient(135deg, #7c5cff, #5a3de0);
     box-shadow: 0 6px 20px rgba(108, 76, 240, 0.45);
-  }
-
-  .ghost {
-    padding: 0.9rem 1.4rem;
-    font-size: 0.95rem;
-    color: rgba(240, 236, 255, 0.7);
-    background: rgba(255, 255, 255, 0.08);
-    border: 1px solid rgba(255, 255, 255, 0.15);
   }
 </style>
