@@ -1,4 +1,43 @@
-# Svelte + Vite
+# 抽牌
+
+用于聚会的随机抽牌网页，使用 Svelte 5、TypeScript 和 Vite 实现。
+
+## 自定义牌组
+
+默认读取 `public/cards.txt`。可以通过 URL 查询参数 `deck` 传入自定义牌组：
+
+```text
+https://你的站点/?deck=<牌组文件内容的 Base64>
+```
+
+牌组文件为 **UTF-8 纯文本**，每行一张牌，忽略空行与首尾空白。传入的是文件内容的编码，不是文件名或文件地址。支持标准 Base64 和 Base64URL。
+
+使用 Node.js 从本地文件生成链接（将文件路径和站点地址替换为实际值）：
+
+```js
+import { readFileSync } from "node:fs";
+
+const url = new URL("https://你的站点/");
+url.searchParams.set("deck", readFileSync("my-cards.txt").toString("base64"));
+console.log(url.href);
+```
+
+用 `URLSearchParams` 自动转义参数；手动拼接标准 Base64 时请使用 `encodeURIComponent`。
+
+存在 `deck` 参数时只使用自定义牌组，抽完后重新洗牌也沿用该牌组。参数格式错误、不是有效 UTF-8 或牌组为空时，页面显示错误；移除参数即可使用默认牌组。牌组直接包含在链接中，适合较短的文本牌组，较大的文件可能超过浏览器或托管平台的 URL 长度限制。
+
+## 本地开发
+
+```sh
+npm install
+npm run dev
+npm run check
+npm run build
+```
+
+---
+
+## Vite 模板说明
 
 This template should help get you started developing with Svelte in Vite.
 

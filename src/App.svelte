@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { parseCards, shuffle } from "./lib/deck";
+  import { parseCards, parseCustomDeck, shuffle } from "./lib/deck";
 
   /** 翻开卡牌的时长：曲线带回弹，稍长一些让弹性完整呈现 */
   const FLIP_OPEN_MS = 650;
@@ -26,9 +26,14 @@
 
   onMount(async () => {
     try {
-      const response = await fetch(`${import.meta.env.BASE_URL}cards.txt`);
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
-      allCards = parseCards(await response.text());
+      const customDeck = parseCustomDeck(window.location.search);
+      if (customDeck !== null) {
+        allCards = customDeck;
+      } else {
+        const response = await fetch(`${import.meta.env.BASE_URL}cards.txt`);
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        allCards = parseCards(await response.text());
+      }
       deck = shuffle(allCards);
     } catch (error) {
       loadError = `卡牌数据加载失败：${error instanceof Error ? error.message : String(error)}`;
