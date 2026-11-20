@@ -1,12 +1,7 @@
-/**
- * 卡牌数据的纯函数工具：解析与洗牌。
- * 与 UI 无关，便于单独测试。
- */
-
 /** 从 txt 文本解析卡牌：一行一张，忽略首尾空白与空行 */
 export function parseCards(text: string): string[] {
   return text
-    .split(/\r?\n/)
+    .split(/\r\n|[\r\n]/)
     .map((line) => line.trim())
     .filter((line) => line.length > 0);
 }
@@ -28,6 +23,18 @@ export function parseCustomDeck(search: string): string[] | null {
 
   const cards = parseCards(text);
   if (cards.length === 0) throw new Error("自定义牌组为空，请至少提供一张卡牌");
+  return cards;
+}
+
+export async function loadDeck(search: string, defaultUrl: string, signal?: AbortSignal): Promise<string[]> {
+  const customDeck = parseCustomDeck(search);
+  if (customDeck !== null) return customDeck;
+
+  const response = await fetch(defaultUrl, { signal });
+  if (!response.ok) throw new Error(`HTTP ${response.status}`);
+
+  const cards = parseCards(await response.text());
+  if (cards.length === 0) throw new Error("默认牌组为空，请在 cards.txt 中至少提供一张卡牌");
   return cards;
 }
 

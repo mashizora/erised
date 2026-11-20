@@ -28,10 +28,13 @@ console.log(url.href);
 
 ## 本地开发
 
+使用 Node.js 24 可与 GitHub Pages 构建环境保持一致。
+
 ```sh
-npm install
+npm ci
 npm run dev
 npm run check
+npm test
 npm run build
 ```
 

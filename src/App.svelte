@@ -1,76 +1,76 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { parseCards, parseCustomDeck, shuffle } from "./lib/deck";
+  import FlipCard, { type CardPhase } from "./lib/FlipCard.svelte";
+  import { loadDeck, shuffle } from "./lib/deck";
 
-  /** 翻开卡牌的时长：曲线带回弹，稍长一些让弹性完整呈现 */
-  const FLIP_OPEN_MS = 650;
-  /** 合上卡牌的时长：干脆利落，为下一张让路 */
-  const FLIP_CLOSE_MS = 300;
+  const FLIP_OPEN_MS = 480;
+  const FLIP_CLOSE_MS = 210;
+  const BURN_MS = 940;
 
-  /** 全部卡牌（加载后不再变化） */
-  let allCards: string[] = $state([]);
-  /** 尚未抽到的卡牌，洗牌后从队首依次抽取 */
-  let deck: string[] = $state([]);
-  /** 当前展示的卡牌文字；尚未抽过时为 null */
-  let currentCard: string | null = $state(null);
-  /** 卡牌是否处于翻开（正面朝上）状态 */
-  let isFlipped = $state(false);
-  /** 动画进行中，屏蔽连点 */
-  let isAnimating = $state(false);
+  let deck = $state.raw<string[]>([]);
+  let drawn = $state(0);
+  let phase = $state<CardPhase>("idle");
   let loadError = $state("");
+  let timer: ReturnType<typeof setTimeout>;
 
-  const isDeckEmpty = $derived(allCards.length > 0 && deck.length === 0);
+  const remaining = $derived(deck.length - drawn);
+  const currentCard = $derived(drawn > 0 ? deck[drawn - 1] : null);
 
-  const delay = (ms: number) =>
-    new Promise<void>((resolve) => setTimeout(resolve, ms));
+  onMount(() => {
+    const controller = new AbortController();
+    loadDeck(window.location.search, `${import.meta.env.BASE_URL}cards.txt`, controller.signal)
+      .then((cards) => {
+        if (!controller.signal.aborted) deck = shuffle(cards);
+      })
+      .catch((error: unknown) => {
+        if (!controller.signal.aborted) {
+          loadError = `卡牌数据加载失败：${error instanceof Error ? error.message : String(error)}`;
+        }
+      });
 
-  onMount(async () => {
-    try {
-      const customDeck = parseCustomDeck(window.location.search);
-      if (customDeck !== null) {
-        allCards = customDeck;
-      } else {
-        const response = await fetch(`${import.meta.env.BASE_URL}cards.txt`);
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
-        allCards = parseCards(await response.text());
-      }
-      deck = shuffle(allCards);
-    } catch (error) {
-      loadError = `卡牌数据加载失败：${error instanceof Error ? error.message : String(error)}`;
-    }
+    return () => {
+      controller.abort();
+      clearTimeout(timer);
+    };
   });
 
-  /** 若卡牌正翻开着，先合上再继续 */
-  async function closeCardIfOpen(): Promise<void> {
-    if (!isFlipped) return;
-    isFlipped = false;
-    await delay(FLIP_CLOSE_MS);
+  function advance() {
+    if (remaining === 0) {
+      deck = shuffle(deck);
+      drawn = 0;
+      phase = "idle";
+      return;
+    }
+
+    drawn += 1;
+    phase = "opening";
+    timer = setTimeout(() => {
+      phase = "idle";
+    }, motionDuration(FLIP_OPEN_MS));
   }
 
-  /** 抽出下一张卡并翻开展示 */
-  async function draw(): Promise<void> {
-    if (isAnimating || deck.length === 0) return;
-    isAnimating = true;
-
-    await closeCardIfOpen();
-    currentCard = deck[0];
-    deck = deck.slice(1);
-    isFlipped = true;
-    await delay(FLIP_OPEN_MS);
-
-    isAnimating = false;
+  function motionDuration(ms: number) {
+    return window.matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : ms;
   }
 
-  /** 收回所有卡牌，重新洗牌开始新一轮 */
-  async function reset(): Promise<void> {
-    if (isAnimating) return;
-    isAnimating = true;
+  function handleDraw() {
+    if (phase !== "idle" || deck.length === 0) return;
+    if (drawn === 0) {
+      advance();
+      return;
+    }
 
-    await closeCardIfOpen();
-    currentCard = null;
-    deck = shuffle(allCards);
-
-    isAnimating = false;
+    if (remaining > 0) {
+      if (motionDuration(BURN_MS) === 0) {
+        advance();
+        return;
+      }
+      phase = "burning";
+      timer = setTimeout(advance, BURN_MS);
+    } else {
+      phase = "closing";
+      timer = setTimeout(advance, motionDuration(FLIP_CLOSE_MS));
+    }
   }
 </script>
 
@@ -81,8 +81,8 @@
   <header>
     <h1>抽牌</h1>
     <p class="count">
-      {#if allCards.length > 0}
-        剩余 {deck.length} / {allCards.length} 张
+      {#if deck.length > 0}
+        剩余 <strong>{remaining}</strong> / {deck.length} 张
       {:else if !loadError}
         加载中…
       {/if}
@@ -90,184 +90,112 @@
   </header>
 
   {#if loadError}
-    <p class="error">{loadError}</p>
+    <p class="error" role="alert">{loadError}</p>
   {:else}
-    <div class="stage">
-      <div class="lift" class:raised={isAnimating}>
-        <div class="card" class:flipped={isFlipped}>
-          <div class="face back">
-            <span class="pattern">✦</span>
-          </div>
-          <div class="face front">
-            <p>{currentCard}</p>
-          </div>
-        </div>
-      </div>
-    </div>
-
+    <FlipCard {currentCard} {phase} burnMs={BURN_MS} />
     <div class="actions">
-      {#if isDeckEmpty}
-        <button class="primary" onclick={reset} disabled={isAnimating}>
-          重新洗牌
-        </button>
-      {:else}
-        <button class="primary" onclick={draw} disabled={isAnimating}>
-          抽一张
-        </button>
-      {/if}
+      <button class="primary" onclick={handleDraw} disabled={deck.length === 0 || phase !== "idle"}>
+        <span class="deck-icon" aria-hidden="true"></span>
+        {deck.length > 0 && remaining === 0 ? "重新洗牌" : "抽一张"}
+      </button>
     </div>
   {/if}
 </main>
 
 <style>
   main {
-    min-height: 100dvh;
+    min-height: 100svh;
+    box-sizing: border-box;
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    gap: 2rem;
-    padding: 1.5rem;
-    box-sizing: border-box;
+    gap: clamp(1.75rem, 4.8svh, 3rem);
+    padding: 2rem 1.5rem;
   }
 
-  header {
-    text-align: center;
-  }
-
+  header { text-align: center; }
   h1 {
     margin: 0;
-    font-size: 1.8rem;
-    font-weight: 700;
-    letter-spacing: 0.3em;
-    text-indent: 0.3em;
-    color: #f0ecff;
+    font: 600 clamp(2.25rem, 6vw, 3rem)/1.25 var(--serif);
+    letter-spacing: .16em;
+    text-indent: .16em;
+    color: var(--paper);
   }
 
   .count {
-    margin: 0.5rem 0 0;
-    font-size: 0.9rem;
-    color: rgba(240, 236, 255, 0.55);
-    min-height: 1.2em;
-  }
-
-  .error {
-    color: #ff8080;
-  }
-
-  .stage {
-    perspective: 1200px;
-  }
-
-  /*
-   * 抬升层：翻牌期间沿 Z 轴抬起悬浮，结束后落回。
-   * 与 .card 的旋转分属两个元素的 transform，互不干扰，均由 GPU 合成。
-   */
-  .lift {
-    transform-style: preserve-3d;
-    /* 落下：长尾 ease-out，轻轻放回桌面 */
-    transition: transform 0.5s cubic-bezier(0.22, 1, 0.36, 1);
-  }
-
-  .lift.raised {
-    transform: translateZ(70px);
-    /* 抬起：快速利落地离开桌面 */
-    transition: transform 0.25s cubic-bezier(0.3, 0.7, 0.4, 1);
-  }
-
-  .card {
-    position: relative;
-    width: min(72vw, 300px);
-    aspect-ratio: 3 / 4.2;
-    transform-style: preserve-3d;
-    /* 合上：标准 ease-in-out，快速干脆 */
-    transition: transform var(--flip-close) cubic-bezier(0.45, 0, 0.55, 1);
-  }
-
-  .card.flipped {
-    transform: rotateY(180deg);
-    /* 翻开：back-out 曲线，翻过头一点再弹回，更有翻实体牌的手感 */
-    transition: transform var(--flip-open) cubic-bezier(0.34, 1.56, 0.64, 1);
-  }
-
-  .face {
-    position: absolute;
-    inset: 0;
     display: flex;
-    align-items: center;
     justify-content: center;
-    border-radius: 18px;
-    backface-visibility: hidden;
-    -webkit-backface-visibility: hidden;
-    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.35);
-  }
-
-  .back {
-    background: radial-gradient(
-        circle at 30% 20%,
-        rgba(255, 255, 255, 0.12),
-        transparent 50%
-      ),
-      linear-gradient(145deg, #4c3a8f, #2b2160);
-    border: 2px solid rgba(255, 255, 255, 0.18);
-  }
-
-  .pattern {
-    font-size: 3.5rem;
-    color: rgba(255, 255, 255, 0.55);
-    text-shadow: 0 0 24px rgba(255, 255, 255, 0.4);
-  }
-
-  .front {
-    background: linear-gradient(160deg, #fdfbf7, #ece5d8);
-    color: #2b2438;
-    transform: rotateY(180deg);
-    padding: 1.5rem;
-    box-sizing: border-box;
-  }
-
-  .front p {
-    margin: 0;
-    font-size: clamp(1.05rem, 4.5vw, 1.3rem);
-    line-height: 1.7;
-    text-align: center;
-    word-break: break-word;
-  }
-
-  .actions {
-    display: flex;
-    gap: 1rem;
     align-items: center;
-    min-height: 3.2rem;
+    gap: .35em;
+    margin: .6rem 0 0;
+    min-height: 1.5em;
+    color: var(--muted);
+    font-size: .9rem;
+    font-variant-numeric: tabular-nums;
   }
 
-  button {
-    font: inherit;
-    border: none;
-    border-radius: 999px;
-    cursor: pointer;
-    transition:
-      transform 0.15s ease,
-      opacity 0.15s ease;
-    touch-action: manipulation;
-    -webkit-tap-highlight-color: transparent;
+  .count:not(:empty)::before, .count:not(:empty)::after {
+    content: "";
+    width: 1.65rem;
+    height: 1px;
+    margin: 0 .4rem;
+    background: #a9a57b80;
   }
 
-  button:active:not(:disabled) {
-    transform: scale(0.96);
-  }
-
-  button:disabled {
-    opacity: 0.5;
-    cursor: default;
-  }
+  .count strong { color: var(--gold); }
+  .error { color: #ffccb8; text-align: center; }
 
   .primary {
-    padding: 0.9rem 2.8rem;
-    font-size: 1.1rem;
-    font-weight: 600;
-    color: #fff;
-    background: linear-gradient(135deg, #7c5cff, #5a3de0);
-    box-shadow: 0 6px 20px rgba(108, 76, 240, 0.45);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: .8em;
+    min-width: 10.5rem;
+    min-height: 3.15rem;
+    padding: .7rem 1.8rem;
+    border: 1px solid #f6db9f;
+    border-radius: 999px;
+    background: linear-gradient(150deg, #f3dca6, var(--gold) 70%, #d9b778);
+    color: var(--ink);
+    box-shadow: 0 4px 12px #061c254d;
+    font: inherit;
+    font-weight: 650;
+    letter-spacing: .08em;
+    transition: transform 140ms ease-out, box-shadow 140ms ease-out;
+    cursor: pointer;
+    touch-action: manipulation;
+  }
+
+  .deck-icon {
+    position: relative;
+    width: .65em;
+    height: .9em;
+    border: 1.4px solid currentColor;
+    border-radius: 2px;
+    transform: rotate(8deg);
+  }
+
+  .deck-icon::before {
+    content: "";
+    position: absolute;
+    inset: .1em .2em -.2em -.28em;
+    border: solid currentColor;
+    border-width: 0 0 1.4px 1.4px;
+    border-radius: 2px;
+    transform: rotate(-12deg);
+  }
+
+  @media (hover: hover) {
+    .primary:hover:enabled { transform: translateY(-2px); box-shadow: 0 7px 16px #061c2566; }
+  }
+
+  .primary:active:enabled { transform: translateY(1px); }
+  .primary:focus-visible { outline: 2px solid var(--paper); outline-offset: 5px; }
+  .primary:disabled { background: #c9bf9e; border-color: #c9bf9e; cursor: default; }
+
+  @media (prefers-reduced-motion: reduce) {
+    .primary { transition: none; }
+    .primary:hover:enabled, .primary:active:enabled { transform: none; }
   }
 </style>

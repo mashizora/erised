@@ -1,29 +1,24 @@
 :root {
-  font-family:
-    system-ui, "Segoe UI", "PingFang SC", "Microsoft YaHei", Roboto, sans-serif;
-  line-height: 1.5;
+  font-family: system-ui, "PingFang SC", "Microsoft YaHei", sans-serif;
   color-scheme: dark;
-  color: #f0ecff;
+  --table: #102c2b;
+  --paper: #f6efdc;
+  --ink: #203632;
+  --gold: #e8c98c;
+  --muted: #b7ccc1;
+  --serif: "Songti SC", "Noto Serif CJK SC", "Source Han Serif SC", "SimSun", serif;
+  color: var(--paper);
+  line-height: 1.5;
   font-synthesis: none;
-  text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
 }
 
 body {
   margin: 0;
   min-height: 100dvh;
   background:
-    radial-gradient(
-      circle at 20% 15%,
-      rgba(124, 92, 255, 0.25),
-      transparent 45%
-    ),
-    radial-gradient(
-      circle at 85% 80%,
-      rgba(76, 58, 143, 0.35),
-      transparent 50%
-    ),
-    #17132b;
+    radial-gradient(ellipse at 50% 40%, transparent 25%, #081e2080 85%),
+    radial-gradient(circle, #c4e1cf0c 0.7px, transparent 1px) 0 0 / 5px 5px,
+    radial-gradient(ellipse at 43% 32%, #32574a, var(--table) 75%);
   overscroll-behavior: none;
 }
