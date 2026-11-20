@@ -2,6 +2,7 @@
   import { onMount } from "svelte";
   import FlipCard, { type CardPhase } from "./lib/FlipCard.svelte";
   import { loadDeck, shuffle } from "./lib/deck";
+  import { progressKey, restoreProgress } from "./lib/progress";
 
   const FLIP_OPEN_MS = 480;
   const FLIP_CLOSE_MS = 210;
@@ -11,6 +12,8 @@
   let drawn = $state(0);
   let phase = $state<CardPhase>("idle");
   let loadError = $state("");
+  let saveFailed = $state(false);
+  let storageKey: string;
   let timer: ReturnType<typeof setTimeout>;
 
   const remaining = $derived(deck.length - drawn);
@@ -20,7 +23,20 @@
     const controller = new AbortController();
     loadDeck(window.location.search, `${import.meta.env.BASE_URL}cards.txt`, controller.signal)
       .then((cards) => {
-        if (!controller.signal.aborted) deck = shuffle(cards);
+        if (controller.signal.aborted) return;
+        storageKey = progressKey(new URL(window.location.href), cards);
+        try {
+          const saved = restoreProgress(window.localStorage.getItem(storageKey), cards);
+          if (saved) {
+            deck = saved.deck;
+            drawn = saved.drawn;
+            return;
+          }
+        } catch {
+          // 浏览器可能禁止访问本地存储，此时仍可在当前页面抽牌。
+        }
+        deck = shuffle(cards);
+        saveProgress();
       })
       .catch((error: unknown) => {
         if (!controller.signal.aborted) {
@@ -34,15 +50,32 @@
     };
   });
 
-  function advance() {
-    if (remaining === 0) {
-      deck = shuffle(deck);
+  function saveProgress(cards = deck, count = drawn) {
+    try {
+      window.localStorage.setItem(storageKey, JSON.stringify({ deck: cards, drawn: count }));
+      saveFailed = false;
+    } catch {
+      saveFailed = true;
+    }
+  }
+
+  function handleReset() {
+    if (phase !== "idle" || drawn === 0) return;
+    if (!window.confirm("确定重置当前牌组的进度并重新洗牌吗？")) return;
+    phase = "closing";
+    // 立即保存新的一局，即使在收牌动画中刷新也会恢复到起点。
+    const nextDeck = shuffle(deck);
+    saveProgress(nextDeck, 0);
+    timer = setTimeout(() => {
+      deck = nextDeck;
       drawn = 0;
       phase = "idle";
-      return;
-    }
+    }, motionDuration(FLIP_CLOSE_MS));
+  }
 
+  function advance() {
     drawn += 1;
+    saveProgress();
     phase = "opening";
     timer = setTimeout(() => {
       phase = "idle";
@@ -60,17 +93,16 @@
       return;
     }
 
-    if (remaining > 0) {
-      if (motionDuration(BURN_MS) === 0) {
-        advance();
-        return;
-      }
-      phase = "burning";
-      timer = setTimeout(advance, BURN_MS);
-    } else {
-      phase = "closing";
-      timer = setTimeout(advance, motionDuration(FLIP_CLOSE_MS));
+    if (remaining === 0) {
+      handleReset();
+      return;
     }
+    if (motionDuration(BURN_MS) === 0) {
+      advance();
+      return;
+    }
+    phase = "burning";
+    timer = setTimeout(advance, BURN_MS);
   }
 </script>
 
@@ -92,12 +124,18 @@
   {#if loadError}
     <p class="error" role="alert">{loadError}</p>
   {:else}
-    <FlipCard {currentCard} {phase} burnMs={BURN_MS} />
+    <FlipCard {currentCard} {phase} total={deck.length} remaining={phase === "closing" ? deck.length : remaining} burnMs={BURN_MS} />
     <div class="actions">
       <button class="primary" onclick={handleDraw} disabled={deck.length === 0 || phase !== "idle"}>
         <span class="deck-icon" aria-hidden="true"></span>
         {deck.length > 0 && remaining === 0 ? "重新洗牌" : "抽一张"}
       </button>
+      <button class="reset" class:concealed={remaining === 0} onclick={handleReset} disabled={drawn === 0 || phase !== "idle"}>
+        重置进度
+      </button>
+      {#if saveFailed}
+        <small role="status">浏览器未能保存进度，关闭或刷新后可能丢失本局记录。</small>
+      {/if}
     </div>
   {/if}
 </main>
@@ -117,7 +155,7 @@
   header { text-align: center; }
   h1 {
     margin: 0;
-    font: 600 clamp(2.25rem, 6vw, 3rem)/1.25 var(--serif);
+    font: 600 clamp(2.25rem, 6vw, 3rem)/1.25 var(--sans);
     letter-spacing: .16em;
     text-indent: .16em;
     color: var(--paper);
@@ -145,6 +183,21 @@
 
   .count strong { color: var(--gold); }
   .error { color: #ffccb8; text-align: center; }
+
+  .actions { display: grid; justify-items: center; gap: .35rem; }
+  .reset {
+    padding: .5rem 1rem;
+    border: 0;
+    background: transparent;
+    color: var(--muted);
+    font: inherit;
+    font-size: .9rem;
+    cursor: pointer;
+  }
+  .reset:hover:enabled { color: var(--paper); text-decoration: underline; }
+  .reset:disabled { opacity: .55; cursor: default; }
+  .reset.concealed { visibility: hidden; }
+  .actions small { color: var(--muted); text-align: center; }
 
   .primary {
     display: inline-flex;
@@ -191,7 +244,7 @@
   }
 
   .primary:active:enabled { transform: translateY(1px); }
-  .primary:focus-visible { outline: 2px solid var(--paper); outline-offset: 5px; }
+  .actions button:focus-visible { outline: 2px solid var(--paper); outline-offset: 5px; }
   .primary:disabled { background: #c9bf9e; border-color: #c9bf9e; cursor: default; }
 
   @media (prefers-reduced-motion: reduce) {

@@ -1,12 +1,12 @@
 :root {
-  font-family: system-ui, "PingFang SC", "Microsoft YaHei", sans-serif;
+  --sans: "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC", system-ui, sans-serif;
+  font-family: var(--sans);
   color-scheme: dark;
   --table: #102c2b;
   --paper: #f6efdc;
   --ink: #203632;
   --gold: #e8c98c;
   --muted: #b7ccc1;
-  --serif: "Songti SC", "Noto Serif CJK SC", "Source Han Serif SC", "SimSun", serif;
   color: var(--paper);
   line-height: 1.5;
   font-synthesis: none;

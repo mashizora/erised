@@ -5,12 +5,20 @@
 <script lang="ts">
   import { createBurnPattern } from "./burn-pattern";
 
-  let { currentCard, phase, burnMs }: {
+  let { currentCard, phase, remaining, total, burnMs }: {
     currentCard: string | null;
     phase: CardPhase;
+    remaining: number;
+    total: number;
     burnMs: number;
   } = $props();
   const isBurning = $derived(phase === "burning");
+  // 初始、燃烧和重洗时，中央牌背已经占用一张待抽牌。
+  const cardsBelow = $derived(Math.max(0, remaining - (currentCard === null || isBurning || phase === "closing" ? 1 : 0)));
+  // 最后三张逐张露边；更厚的牌堆按整副牌的大小压缩到最多十二道纸边。
+  const fullStack = $derived(Math.max(0, total - 1));
+  const edgeDepth = $derived(cardsBelow <= 3 ? cardsBelow :
+    3 + (cardsBelow - 3) * (Math.min(12, fullStack) - 3) / (fullStack - 3));
   const id = $props.id();
 </script>
 
@@ -27,15 +35,20 @@
   </div>
 {/snippet}
 
-<div class="stage" class:shuffling={phase === "closing"}>
-  <div class="lift" class:raised={phase !== "idle"}>
+<div class="stage">
+  <div class="stack" aria-hidden="true">
+    {#each { length: Math.ceil(edgeDepth) } as _, i}
+      <div class="edge" style:--depth={Math.min(i + 1, edgeDepth)} style:z-index={-i}></div>
+    {/each}
+  </div>
+  <div class="top-card">
     {#if isBurning}
       {@render cardBack()}
     {/if}
     <div class="card" class:flipped={currentCard !== null && phase !== "closing"} class:opening={phase === "opening"}>
       {@render cardBack()}
       <div class="face front" aria-live="polite" style:clip-path={isBurning ? `url(#${id}-paper)` : undefined}>
-        <p>{currentCard}</p>
+        {#key remaining}<p>{currentCard}</p>{/key}
       </div>
     </div>
     {#if isBurning}
@@ -84,35 +97,30 @@
     --foil: #dfc184;
   }
 
-  /* 两张衬牌留在桌上；重洗时短暂向两侧展开。 */
-  .stage::before, .stage::after {
-    content: "";
+  .stack {
     position: absolute;
-    inset: 1px;
-    border-radius: var(--radius);
-    border: 1px solid #9d9c73;
-    background: #20453e;
+    inset: 0;
     z-index: -1;
-    transform-origin: 50% 88%;
-    transition: transform var(--flip-close) ease-in-out;
+    pointer-events: none;
   }
 
-  .stage::before {
-    transform: translate(-4px, 4px) rotate(-5deg);
-    box-shadow: 0 14px 26px #051e2090;
+  .edge {
+    position: absolute;
+    inset: 0;
+    border-radius: var(--radius);
+    background: #365447;
+    border: 1px solid #af9e7b;
+    transform: translate(calc(var(--depth) * 1px), calc(var(--depth) * 1.8px));
   }
 
-  .stage::after { transform: translate(3px, 3px) rotate(3deg); }
-  .shuffling::before { transform: translate(-12px, 2px) rotate(-11deg); }
-  .shuffling::after { transform: translate(10px, 2px) rotate(9deg); }
+  .edge:last-child { box-shadow: 0 8px 18px #051e2066; }
 
-  .lift, .card {
+  .top-card, .card {
+    position: relative;
     height: 100%;
     transform-style: preserve-3d;
   }
 
-  .lift { position: relative; transition: transform 240ms cubic-bezier(.2,.8,.25,1); }
-  .lift.raised { transform: translate3d(0, -5px, 18px) rotate(-1deg); }
   .card { transition: transform var(--flip-close) cubic-bezier(.42,0,.65,1); }
   .card.flipped { transform: rotateY(180deg); }
   .card.opening { animation: reveal var(--flip-open) cubic-bezier(.22,.73,.23,1.04); }
@@ -216,8 +224,11 @@
 
   .front {
     display: grid;
+    grid-template: minmax(0, 1fr) / minmax(0, 1fr);
     place-items: center;
-    padding: 2.4rem 1.75rem;
+    container-type: inline-size;
+    padding: 2rem 1.35rem;
+    overflow: hidden;
     color: var(--ink);
     background: linear-gradient(145deg, #fff8e8, var(--paper) 65%, #e7ddc4);
     border: 1px solid #d4be91;
@@ -244,16 +255,17 @@
     margin: 0;
     min-height: 0;
     max-height: 100%;
+    max-width: 100%;
     overflow: auto;
     overflow-wrap: anywhere;
-    font: 500 clamp(1.12rem, 4.4vw, 1.35rem)/1.7 var(--serif);
+    color-scheme: light;
+    font: 500 clamp(.9375rem, 8.5cqi, 1.1875rem)/1.6 var(--sans);
     text-align: center;
   }
 
   @media (prefers-reduced-motion: reduce) {
-    .card, .card.flipped, .lift, .stage::before, .stage::after { transition: none; }
+    .card, .card.flipped { transition: none; }
     .card.opening, .embers { animation: none; }
     .burn { visibility: hidden; }
-    .lift.raised { transform: none; }
   }
 </style>
